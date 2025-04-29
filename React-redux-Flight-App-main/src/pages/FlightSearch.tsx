@@ -163,7 +163,7 @@ const FlightSearch: React.FC = () => {
           ) : filteredFlights.length === 0 ? (
             <div className="text-center py-5">No flights found</div>
           ) : (
-            filteredFlights.map(flight => (
+            filteredFlights.map(_flight => (
               <>
               {filteredFlights.map(flight => (
                 <FlightCard key={flight.id} flight={flight} />
