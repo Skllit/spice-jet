@@ -1,175 +1,217 @@
 // src/pages/FlightSearch.tsx
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import {
-  Container, Row, Col,
-  Card, Form, Spinner
+  Container,
+  Card,
+  Form,
+  Row,
+  Col,
+  Button,
+  Spinner,
+  Alert
 } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../store';
-import {
-  searchFlights,
-  fetchFlights
-} from '../store/slices/flightsSlice';
+import { fetchFlights, searchFlights } from '../store/slices/flightsSlice';
 import FlightCard from '../components/FlightCard';
-import SearchForm from '../components/SearchForm';
 import { Flight, SearchFilters } from '../types';
-import { SlidersHorizontal } from 'lucide-react';
 
 const FlightSearch: React.FC = () => {
-  const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { flights, loading, error } = useSelector((s: RootState) => s.flights);
 
-  const [filteredFlights, setFilteredFlights] = useState<Flight[]>([]);
+  // --- Search form state ---
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [departureDate, setDepartureDate] = useState('');
+  const [passengers, setPassengers] = useState(1);
+
+  // --- Sidebar filters state ---
   const [availableAirlines, setAvailableAirlines] = useState<string[]>([]);
   const [filterAirlines, setFilterAirlines] = useState<string[]>([]);
   const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 0]);
-  const [sortOption, setSortOption] = useState<'price-asc'|'price-desc'|'duration-asc'|'departure-asc'>('price-asc');
 
-  // Initial load or URL-change
+  // --- Results to render ---
+  const [results, setResults] = useState<Flight[]>([]);
+
+  // Fetch all flights on mount
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const filters: SearchFilters = {};
-    if (params.get('origin'))      filters.origin = params.get('origin')!;
-    if (params.get('destination')) filters.destination = params.get('destination')!;
-    if (params.get('departureDate')) filters.departureDate = params.get('departureDate')!;
-    if (params.get('passengers'))  filters.passengers = Number(params.get('passengers'));
-    
-    if (filters.origin && filters.destination) {
-      dispatch(searchFlights(filters));
-    } else {
-      dispatch(fetchFlights());
-    }
-  }, [dispatch, location.search]);
+    dispatch(fetchFlights());
+  }, [dispatch]);
 
-  // Build filter options once flights arrive
+  // When flights arrive, initialize sidebar filters & results
   useEffect(() => {
     if (!flights.length) return;
+
+    // Build airline list
     const airlines = Array.from(new Set(flights.map(f => f.airline)));
     setAvailableAirlines(airlines);
     setFilterAirlines(airlines);
 
+    // Build price range
     const prices = flights.map(f => f.price);
-    setFilterPrice([Math.min(...prices), Math.max(...prices)]);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    setFilterPrice([minPrice, maxPrice]);
+
+    // Show all by default
+    setResults(flights);
   }, [flights]);
 
-  // Apply filters & sort
+  // Whenever **any** filter changes, re-compute `results`
   useEffect(() => {
-    let results = flights
+    let temp = flights
+      // Sidebar filters
       .filter(f => filterAirlines.includes(f.airline))
       .filter(f => f.price >= filterPrice[0] && f.price <= filterPrice[1]);
 
-    switch (sortOption) {
-      case 'price-asc':
-        results.sort((a,b) => a.price - b.price); break;
-      case 'price-desc':
-        results.sort((a,b) => b.price - a.price); break;
-      case 'duration-asc':
-        results.sort((a,b) => {
-          const [ah, am] = a.duration.split('h ').map(n => parseInt(n));
-          const [bh, bm] = b.duration.split('h ').map(n => parseInt(n));
-          return ah*60+am - (bh*60+bm);
-        });
-        break;
-      case 'departure-asc':
-        results.sort((a,b) => 
-          new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime()
-        );
-        break;
-    }
+    // Search form filters
+    if (origin)        temp = temp.filter(f => f.origin === origin);
+    if (destination)   temp = temp.filter(f => f.destination === destination);
+    if (departureDate) temp = temp.filter(
+      f => f.departureDate.slice(0,10) === departureDate
+    );
 
-    setFilteredFlights(results);
-  }, [flights, filterAirlines, filterPrice, sortOption]);
+    setResults(temp);
+  }, [
+    flights,
+    filterAirlines,
+    filterPrice,
+    origin,
+    destination,
+    departureDate
+  ]);
 
-  const handleSearch = (filters: SearchFilters) => {
+  // Trigger backend search (origin/dest) — updates `flights`
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const filters: SearchFilters = {
+      origin,
+      destination,
+      departureDate,
+      passengers
+    };
     dispatch(searchFlights(filters));
   };
 
-  const toggleAirlineFilter = (airline: string) => {
-    setFilterAirlines(prev => 
-      prev.includes(airline) 
+  // Sidebar interactions
+  const toggleAirline = (airline: string) => {
+    setFilterAirlines(prev =>
+      prev.includes(airline)
         ? prev.filter(a => a !== airline)
         : [...prev, airline]
     );
   };
-
-  const handleMaxPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilterPrice([filterPrice[0], Number(e.target.value)]);
+  const handleMaxPriceChange = (val: number) => {
+    setFilterPrice([filterPrice[0], val]);
   };
+
+  // Build dropdown options
+  const origins = Array.from(new Set(flights.map(f => f.origin)));
+  const destinations = Array.from(new Set(flights.map(f => f.destination)));
 
   return (
     <Container className="py-5">
-      <SearchForm onSearch={handleSearch} />
+      {/* — Search Form — */}
+      <Card className="p-4 mb-4">
+        <Form onSubmit={handleSearch}>
+          <Row className="g-3">
+            <Col md>
+              <Form.Label>Origin</Form.Label>
+              <Form.Select
+                value={origin}
+                onChange={e => setOrigin(e.target.value)}
+                required
+              >
+                <option value="">Select origin</option>
+                {origins.map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </Form.Select>
+            </Col>
 
-      <Row className="mt-4">
-        {/* Sidebar Filters */}
+            <Col md>
+              <Form.Label>Destination</Form.Label>
+              <Form.Select
+                value={destination}
+                onChange={e => setDestination(e.target.value)}
+                required
+              >
+                <option value="">Select destination</option>
+                {destinations.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </Form.Select>
+            </Col>
+
+            <Col md>
+              <Form.Label>Departure Date</Form.Label>
+              <Form.Control
+                type="date"
+                value={departureDate}
+                onChange={e => setDepartureDate(e.target.value)}
+                required
+              />
+            </Col>
+
+            <Col md>
+              <Form.Label>Passengers</Form.Label>
+              <Form.Control
+                type="number"
+                min={1}
+                value={passengers}
+                onChange={e => setPassengers(Number(e.target.value))}
+              />
+            </Col>
+
+            <Col md="auto" className="d-flex align-items-end">
+              <Button type="submit">Search</Button>
+            </Col>
+          </Row>
+        </Form>
+      </Card>
+
+      <Row>
+        {/* — Sidebar Filters — */}
         <Col lg={3} className="mb-4">
           <Card className="p-3">
-            <div className="d-flex align-items-center mb-3">
-              <SlidersHorizontal className="me-2" /> Filters
-            </div>
+            <h6>Max Price: ${filterPrice[1]}</h6>
+            <Form.Range
+              min={0}
+              max={filterPrice[1]}
+              value={filterPrice[1]}
+              onChange={e => handleMaxPriceChange(Number(e.target.value))}
+            />
 
-            <Form.Group className="mb-3">
-              <Form.Label>Max Price: ${filterPrice[1]}</Form.Label>
-              <Form.Range
-                min={0}
-                max={filterPrice[1]}
-                value={filterPrice[1]}
-                onChange={handleMaxPriceChange}
+            <hr />
+
+            <h6>Airlines</h6>
+            {availableAirlines.map(a => (
+              <Form.Check
+                key={a}
+                type="checkbox"
+                label={a}
+                checked={filterAirlines.includes(a)}
+                onChange={() => toggleAirline(a)}
+                className="mb-1"
               />
-            </Form.Group>
-
-            <div>
-              <h6>Airlines</h6>
-              {availableAirlines.map(airline => (
-                <Form.Check
-                  key={airline}                     // ← unique key
-                  type="checkbox"
-                  label={airline}
-                  checked={filterAirlines.includes(airline)}
-                  onChange={() => toggleAirlineFilter(airline)}
-                  className="mb-1"
-                />
-              ))}
-            </div>
+            ))}
           </Card>
         </Col>
 
-        {/* Results */}
+        {/* — Flight Results — */}
         <Col lg={9}>
-          <Card className="mb-3 p-2">
-            <div className="d-flex justify-content-between">
-              <div>{filteredFlights.length} Flights</div>
-              <Form.Select
-                style={{ width: 180 }}
-                value={sortOption}
-                onChange={e => setSortOption(e.target.value as any)}
-              >
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">High to Low</option>
-                <option value="duration-asc">Duration: Shortest</option>
-                <option value="departure-asc">Departure: Earliest</option>
-              </Form.Select>
-            </div>
-          </Card>
-
           {loading ? (
             <div className="text-center py-5">
               <Spinner animation="border" />
             </div>
           ) : error ? (
-            <div className="alert alert-danger">{error}</div>
-          ) : filteredFlights.length === 0 ? (
-            <div className="text-center py-5">No flights found</div>
+            <Alert variant="danger">{error}</Alert>
+          ) : results.length === 0 ? (
+            <div className="text-center py-5">No flights found.</div>
           ) : (
-            filteredFlights.map(_flight => (
-              <>
-              {filteredFlights.map(flight => (
-                <FlightCard key={flight.id} flight={flight} />
-              ))}</>
-              
-            
+            results.map(flight => (
+              <FlightCard key={flight.id} flight={flight} />
             ))
           )}
         </Col>
