@@ -3,7 +3,7 @@ import { Container, Button, Spinner, Alert, Form, Row, Col, Card } from 'react-b
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../src/store';
-import { fetchFlights, setSelectedFlight } from '../../../React-redux-Flight-App-main/src/store/slices/flightsSlice';
+import { fetchFlights, setSelectedFlight } from '../../src/store/slices/flightsSlice';
 import { createBooking } from '../../src/store/slices/bookingsSlice';
 import { Passenger } from '../../src/types';
 
