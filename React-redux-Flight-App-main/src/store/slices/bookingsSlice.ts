@@ -3,8 +3,11 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import API from '../../api/axios';
 import { Booking, BookingsState } from '../../types';
 
-// Mongoose returns _id; we map it to id for our Redux state.
-type RawBooking = Omit<Booking, 'id'> & { _id: string };
+// The raw shape from Mongo:
+type RawBooking = Omit<Booking, 'id' | 'flightId'> & {
+  _id: string;
+  flight: string;        // this is the ObjectId of the flight
+};
 
 const initialState: BookingsState = {
   bookings: [],
@@ -13,77 +16,81 @@ const initialState: BookingsState = {
   error: null,
 };
 
-// — fetch bookings for the current user
+// Fetch current user’s bookings
 export const fetchBookings = createAsyncThunk<Booking[], void, { rejectValue: string }>(
   'bookings/fetchBookings',
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await API.get<RawBooking[]>('/bookings/mine');
-      return data.map(({ _id, ...rest }) => ({ id: _id, ...rest }));
+      return data.map(({ _id, flight, ...rest }) => ({
+        id: _id,
+        flightId: flight,
+        ...rest
+      }));
     } catch {
       return rejectWithValue('Failed to fetch your bookings.');
     }
   }
 );
 
-// — fetch all bookings (admin)
+// Fetch all bookings (admin)
 export const fetchAllBookings = createAsyncThunk<Booking[], void, { rejectValue: string }>(
   'bookings/fetchAllBookings',
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await API.get<RawBooking[]>('/bookings');
-      return data.map(({ _id, ...rest }) => ({ id: _id, ...rest }));
+      return data.map(({ _id, flight, ...rest }) => ({
+        id: _id,
+        flightId: flight,
+        ...rest
+      }));
     } catch {
       return rejectWithValue('Failed to fetch all bookings.');
     }
   }
 );
 
-// — fetch a single booking by ID
+// Fetch a single booking by ID
 export const fetchBookingById = createAsyncThunk<Booking, string, { rejectValue: string }>(
   'bookings/fetchBookingById',
   async (bookingId, { rejectWithValue }) => {
     try {
       const { data } = await API.get<RawBooking>(`/bookings/${bookingId}`);
-      const { _id, ...rest } = data;
-      return { id: _id, ...rest };
+      const { _id, flight, ...rest } = data;
+      return { id: _id, flightId: flight, ...rest };
     } catch {
       return rejectWithValue('Failed to fetch booking.');
     }
   }
 );
 
-// — create a new booking
+// Create a booking
 export const createBooking = createAsyncThunk<
   Booking,
   Omit<Booking, 'id' | 'status' | 'bookingDate'>,
   { rejectValue: string }
 >(
   'bookings/createBooking',
-  async (bookingData, { rejectWithValue }) => {
+  async ({ flightId, passengers, totalPrice }, { rejectWithValue }) => {
     try {
-      const payload = {
-        flight: bookingData.flightId,
-        passengers: bookingData.passengers,
-        totalPrice: bookingData.totalPrice,
-      };
+      const payload = { flight: flightId, passengers, totalPrice };
       const { data } = await API.post<RawBooking>('/bookings', payload);
-      const { _id, ...rest } = data;
-      return { id: _id, ...rest };
+      const { _id, flight, ...rest } = data;
+      return { id: _id, flightId: flight, ...rest };
     } catch {
       return rejectWithValue('Failed to create booking.');
     }
   }
 );
 
-// — cancel an existing booking
+// Cancel a booking
 export const cancelBooking = createAsyncThunk<Booking, string, { rejectValue: string }>(
   'bookings/cancelBooking',
   async (bookingId, { rejectWithValue }) => {
     try {
       const { data } = await API.put<RawBooking>(`/bookings/${bookingId}/cancel`);
-      const { _id, ...rest } = data;
-      return { id: _id, ...rest };
+      const { _id, flight, ...rest } = data;
+      return { id: _id, flightId: flight, ...rest };
     } catch {
       return rejectWithValue('Failed to cancel booking.');
     }
@@ -97,52 +104,47 @@ const bookingsSlice = createSlice({
     setSelectedBooking: (state, action: PayloadAction<Booking | null>) => {
       state.selectedBooking = action.payload;
     },
-    clearBookingsError: (state) => {
+    clearBookingsError: state => {
       state.error = null;
     },
   },
   extraReducers: builder => {
     builder
-      // fetchBookings
-      .addCase(fetchBookings.pending, state => { state.loading = true; state.error = null; })
+      .addCase(fetchBookings.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(fetchBookings.fulfilled, (state, { payload }) => {
         state.loading = false; state.bookings = payload;
       })
-      .addCase(fetchBookings.rejected, (state, { payload }) => {
+      .addCase(fetchBookings.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // fetchAllBookings
-      .addCase(fetchAllBookings.pending, state => { state.loading = true; state.error = null; })
+      .addCase(fetchAllBookings.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(fetchAllBookings.fulfilled, (state, { payload }) => {
         state.loading = false; state.bookings = payload;
       })
-      .addCase(fetchAllBookings.rejected, (state, { payload }) => {
+      .addCase(fetchAllBookings.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // fetchBookingById
-      .addCase(fetchBookingById.pending, state => { state.loading = true; state.error = null; })
+      .addCase(fetchBookingById.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(fetchBookingById.fulfilled, (state, { payload }) => {
         state.loading = false; state.selectedBooking = payload;
       })
-      .addCase(fetchBookingById.rejected, (state, { payload }) => {
+      .addCase(fetchBookingById.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // createBooking
-      .addCase(createBooking.pending, state => { state.loading = true; state.error = null; })
+      .addCase(createBooking.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(createBooking.fulfilled, (state, { payload }) => {
         state.loading = false;
         state.bookings.push(payload);
         state.selectedBooking = payload;
       })
-      .addCase(createBooking.rejected, (state, { payload }) => {
+      .addCase(createBooking.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // cancelBooking
-      .addCase(cancelBooking.pending, state => { state.loading = true; state.error = null; })
+      .addCase(cancelBooking.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(cancelBooking.fulfilled, (state, { payload }) => {
         state.loading = false;
         const idx = state.bookings.findIndex(b => b.id === payload.id);
@@ -151,7 +153,7 @@ const bookingsSlice = createSlice({
           state.selectedBooking = payload;
         }
       })
-      .addCase(cancelBooking.rejected, (state, { payload }) => {
+      .addCase(cancelBooking.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       });
   }

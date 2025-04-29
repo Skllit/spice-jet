@@ -1,13 +1,11 @@
 // src/store/slices/flightsSlice.ts
-
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import axios from 'axios';
 import { Flight, FlightsState, SearchFilters } from '../../types';
 
-const API_URL = 'http://localhost:5000/api';  // adjust if your backend runs elsewhere
+const API_URL = 'http://localhost:5000/api';
 
-// We expect the server to return:
-// { _id: string; flightNumber: string; ... }[]
+// The raw shape coming back from Mongo:
 type RawFlight = Omit<Flight, 'id'> & { _id: string };
 
 const initialState: FlightsState = {
@@ -17,24 +15,18 @@ const initialState: FlightsState = {
   error: null,
 };
 
-// Fetch **all** flights
 export const fetchFlights = createAsyncThunk<Flight[], void, { rejectValue: string }>(
   'flights/fetchFlights',
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await axios.get<RawFlight[]>(`${API_URL}/flights`);
-      // Remap _id → id
-      return data.map(({ _id, ...rest }) => ({
-        id: _id,
-        ...rest,
-      }));
+      return data.map(({ _id, ...rest }) => ({ id: _id, ...rest }));
     } catch {
-      return rejectWithValue('Failed to fetch flights. Please try again.');
+      return rejectWithValue('Failed to fetch flights.');
     }
   }
 );
 
-// Search flights with optional filters
 export const searchFlights = createAsyncThunk<Flight[], SearchFilters, { rejectValue: string }>(
   'flights/searchFlights',
   async (filters, { rejectWithValue }) => {
@@ -53,12 +45,11 @@ export const searchFlights = createAsyncThunk<Flight[], SearchFilters, { rejectV
       }
       return flights;
     } catch {
-      return rejectWithValue('Search failed. Please try again.');
+      return rejectWithValue('Search failed.');
     }
   }
 );
 
-// Add a new flight
 export const addFlight = createAsyncThunk<Flight, Omit<Flight, 'id'>, { rejectValue: string }>(
   'flights/addFlight',
   async (flightData, { rejectWithValue }) => {
@@ -67,12 +58,11 @@ export const addFlight = createAsyncThunk<Flight, Omit<Flight, 'id'>, { rejectVa
       const { _id, ...rest } = data;
       return { id: _id, ...rest };
     } catch {
-      return rejectWithValue('Failed to add flight. Please try again.');
+      return rejectWithValue('Failed to add flight.');
     }
   }
 );
 
-// Update an existing flight
 export const updateFlight = createAsyncThunk<Flight, Flight, { rejectValue: string }>(
   'flights/updateFlight',
   async (flightData, { rejectWithValue }) => {
@@ -81,12 +71,11 @@ export const updateFlight = createAsyncThunk<Flight, Flight, { rejectValue: stri
       const { _id, ...rest } = data;
       return { id: _id, ...rest };
     } catch {
-      return rejectWithValue('Failed to update flight. Please try again.');
+      return rejectWithValue('Failed to update flight.');
     }
   }
 );
 
-// Delete a flight
 export const deleteFlight = createAsyncThunk<string, string, { rejectValue: string }>(
   'flights/deleteFlight',
   async (id, { rejectWithValue }) => {
@@ -94,7 +83,7 @@ export const deleteFlight = createAsyncThunk<string, string, { rejectValue: stri
       await axios.delete(`${API_URL}/flights/${id}`);
       return id;
     } catch {
-      return rejectWithValue('Failed to delete flight. Please try again.');
+      return rejectWithValue('Failed to delete flight.');
     }
   }
 );
@@ -106,41 +95,33 @@ const flightsSlice = createSlice({
     setSelectedFlight: (state, action: PayloadAction<Flight | null>) => {
       state.selectedFlight = action.payload;
     },
-    clearFlightsError: (state) => {
+    clearFlightsError: state => {
       state.error = null;
     },
   },
   extraReducers: builder => {
     builder
-      // fetchFlights
-      .addCase(fetchFlights.pending, state => {
-        state.loading = true; state.error = null;
-      })
+      .addCase(fetchFlights.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(fetchFlights.fulfilled, (state, { payload }) => {
         state.loading = false; state.flights = payload;
       })
-      .addCase(fetchFlights.rejected, (state, { payload }) => {
+      .addCase(fetchFlights.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // searchFlights
-      .addCase(searchFlights.pending, state => {
-        state.loading = true; state.error = null;
-      })
+      .addCase(searchFlights.pending,   state => { state.loading = true;  state.error = null; })
       .addCase(searchFlights.fulfilled, (state, { payload }) => {
         state.loading = false; state.flights = payload;
       })
-      .addCase(searchFlights.rejected, (state, { payload }) => {
+      .addCase(searchFlights.rejected,  (state, { payload }) => {
         state.loading = false; state.error = payload!;
       })
 
-      // addFlight
-      .addCase(addFlight.fulfilled, (state, { payload }) => {
+      .addCase(addFlight.fulfilled,     (state, { payload }) => {
         state.flights.push(payload);
       })
 
-      // updateFlight
-      .addCase(updateFlight.fulfilled, (state, { payload }) => {
+      .addCase(updateFlight.fulfilled,  (state, { payload }) => {
         const idx = state.flights.findIndex(f => f.id === payload.id);
         if (idx >= 0) state.flights[idx] = payload;
         if (state.selectedFlight?.id === payload.id) {
@@ -148,8 +129,7 @@ const flightsSlice = createSlice({
         }
       })
 
-      // deleteFlight
-      .addCase(deleteFlight.fulfilled, (state, { payload }) => {
+      .addCase(deleteFlight.fulfilled,  (state, { payload }) => {
         state.flights = state.flights.filter(f => f.id !== payload);
         if (state.selectedFlight?.id === payload) {
           state.selectedFlight = null;
